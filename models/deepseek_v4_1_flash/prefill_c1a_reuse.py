@@ -30,7 +30,11 @@ import pypto.language.distributed as pld
 import torch
 
 from models.deepseek_v4_1_flash import config as C
-from models.deepseek_v4_1_flash.prefill_c1a_common import prefill_c1a_partial
+from models.deepseek_v4_1_flash.prefill_c1a_common import (
+    normalize_q,
+    prefill_c1a_partial,
+    project_qa,
+)
 from models.deepseek_v4_1_flash.prefill_c1a_test_utils import (
     CASE_DEFAULT,
     CASE_MAX_TOKENS,
@@ -170,12 +174,14 @@ def prefill_c1a_reuse(
 ):
     """Read published ratio-1 Top-K rows and compute packed-prefill C1A."""
     tokens = pl.tensor.dim(x, 0)
+    query_projection = pl.create_tensor([tokens, C.Q_LORA], dtype=pl.BF16)
+    project_qa(x, wq_a, wq_a_scale, query_projection, num_tokens)
+    query_latent = pl.create_tensor([tokens, C.Q_LORA], dtype=pl.BF16)
+    normalize_q(query_projection, q_norm_weight, query_latent, num_tokens)
     partial = pl.create_tensor([tokens, D], dtype=pl.FP32)
     prefill_c1a_partial(
         x,
-        wq_a,
-        wq_a_scale,
-        q_norm_weight,
+        query_latent,
         wq_b,
         wq_b_scale,
         wkv,
